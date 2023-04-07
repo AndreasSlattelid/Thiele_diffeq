@@ -1,3 +1,5 @@
+using Plots
+
 mutable struct Contract
     age::Real
     contract_length::Real
@@ -53,7 +55,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
     
     #policy function
     function a_dis(t)
-        if t>= 0 && t < T
+        if t >= 0 && t < T
             ans = D
         else 
             ans = 0 
@@ -74,25 +76,25 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
 
     for i in reverse(1:N)
         tᵢ = (i+1)*h
-        V_act[i] = V_act[i+1] .- h.*(r.*V_act[i+1] 
-                                   .- μ01(x + tᵢ).*(V_dis[i+1] .- V_act[i+1])
-                                   .- μ02(x + tᵢ).*(B .- V_act[i+1])
+        V_act[i] = V_act[i+1] - h*(r*V_act[i+1] 
+                                   - μ01(x + tᵢ)*(V_dis[i+1] - V_act[i+1])
+                                   - μ02(x + tᵢ)*(B - V_act[i+1])
                                    )
         
-        V_dis[i] = V_dis[i+1] .-h.*(r.*V_dis[i+1] - a_dis(tᵢ)
-                                    .- μ10(x + tᵢ).*(V_act[i+1]-V_dis[i+1])
-                                    .+ μ12(x + tᵢ).*V_dis[i+1]
+        V_dis[i] = V_dis[i+1] -h*(r*V_dis[i+1] - a_dis(tᵢ)
+                                    - μ10(x + tᵢ)*(V_act[i+1]-V_dis[i+1])
+                                    + μ12(x + tᵢ)*V_dis[i+1]
                                     )
         
     end
 
-    #One time premium
+    #Single premium
     π0 = V_act[1]
 
     #CASE 2: we pay premium of 1 NOK per year:
 
     #The a.e derivative for the case where we pay 1NOK premium per year: 
-    function a_prem1(t)
+    function ae_prem1(t)
         if t >= 0 && t < T
             ans = -1 
         else 
@@ -106,7 +108,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
 
     for i in reverse(1:N)
         tᵢ = (i+1)*h
-        V_act_p1[i] = V_act_p1[i+1] .-h.*(r.*V_act_p1[i+1] - a_prem1(tᵢ)
+        V_act_p1[i] = V_act_p1[i+1] .-h.*(r.*V_act_p1[i+1] - ae_prem1(tᵢ)
                                           .- μ01(x + tᵢ).*(V_dis_p1[i+1].-V_act_p1[i+1])
                                           .- μ02(x + tᵢ).*V_dis_p1[i+1]
                                           )
@@ -157,18 +159,18 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
 
     for i in reverse(1:N)
         tᵢ = (i+1)*h
-        V_act[i] = V_act[i+1] .- h.*(r.*V_act[i+1] 
-                                     .-μ01(x + tᵢ).*(B.-V_act[i+1])
+        V_act[i] = V_act[i+1] - h*(r*V_act[i+1] 
+                                     -μ01(x + tᵢ)*(B-V_act[i+1])
                                      )                             
     end
 
-    #One time premium
+    #Single premium
     π0 = V_act[1]
 
     #CASE 2: we pay premium of 1 NOK per year:
 
     #The a.e derivative for the case where we pay 1NOK premium per year: 
-    function a_prem1(t)
+    function ae_prem1(t)
         if t >= 0 && t < T
             ans = -1 
         else 
@@ -181,8 +183,8 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
     
     for i in reverse(1:N)
         tᵢ = (i+1)*h
-        V_act_p1[i] = V_act_p1[i+1] .- h.*(r.*V_act_p1[i+1] .- a_prem1(tᵢ)
-                                     .+ μ01(x + tᵢ).*V_act_p1[i+1]
+        V_act_p1[i] = V_act_p1[i+1] - h*(r*V_act_p1[i+1] - ae_prem1(tᵢ)
+                                     + μ01(x + tᵢ)*V_act_p1[i+1]
                                      )
     end
     V_act_p1[1]
@@ -191,9 +193,81 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
     return (V_act, π0, π)
 end
 
+function pension(a::Contract, P, T0, r)
+    "
+    Args:
+        a (Contract): Inherits from Contract 
+        P (Int64): The yearly Pension 
+        T0 (Int64): Years until retirement
+        r (Float64): the constant annual interest rate: 
+    Returns: 
+        Array: (V_{*}(t), π0, π)
+        V_{*}(t): Reserve for healty state 
+        π0: One time premium 
+        π: yearly_premium
+    "
+    x = a.age
+    h = a.step_size
+    T = a.contract_length
+    N = floor(Int, T/h)
+
+     #S = {*, †} = {0,1} 
+     n_states = 2
+     Λ = a.mortality_rates
+     size(Λ(0)) == (n_states,n_states) || error("Λ must be $n_states x $n_states")
+
+    #mortality rates for V_{*}^{+}(t, A)    
+    μ01(t) = Λ(t)[1,2]
+
+    V_act = zeros(N+1) 
+
+    #= 
+    d/dt V_{*}(t) = [r + μ01(x+t)]V_{*}(t) - P⋅I_[T0,T)(t)
+    =#
+
+    #a.e derivative of a_{*}(t), with no premiums: 
+    function ae_pension(t)
+        if t >= T0 && t < T
+            ans = P 
+        else 
+            ans = 0 
+        end
+        return ans
+    end
+
+    for i in reverse(1:N)
+        tᵢ = (i+1)*h
+        V_act[i] = V_act[i+1] - h*((r+μ01(x + tᵢ))*V_act[i+1] - ae_pension(tᵢ))                           
+    end
+
+    π0 = V_act[1]
+
+     #The a.e derivative for the case where we pay 1NOK premium per year: 
+     function ae_prem1(t)
+        if t >= 0 && t < T
+            ans = -1 
+        else 
+            ans = 0
+        end
+        return ans 
+    end
+
+    V_act_p1 = zeros(N+1)
+    
+    for i in reverse(1:N)
+        tᵢ = (i+1)*h
+        V_act_p1[i] = V_act_p1[i+1] - h*((r + μ01(x + tᵢ))*V_act_p1[i+1] - ae_prem1(tᵢ))
+    end
+
+    #yearly premium
+    π = -(π0/V_act_p1[1])
+
+    return (V_act, π0, π)
+end
+
 #EXAMPLES
 #--------------------------------------------------------------------------------------------------------
-#example of disability:
+#Disability:
 function Λ_dis(t)
     #state0:
     μ01(t) = 0.0004 + 10^(0.06*t-5.46)
@@ -217,7 +291,7 @@ contract_dis = Contract(60, 10, Λ_dis, 1/12)
 
 disability_benefit(contract_dis, 25_000, 60_000, 0.04)
 
-#example of endownment:
+#Endownment:
 function Λ_endownment(t)
     μ01(t) = 0.0015 + 0.0004*(t-35)
     μ00(t) = -μ01(t)
@@ -231,5 +305,12 @@ end
 contract_endownment = Contract(35, 60, Λ_endownment, 1/12)
 
 endownment(contract_endownment,125_000, 250_000, 0.035)
+
+#Pension
+Λ_pension(t) = Λ_endownment(t)
+
+contract_pension = Contract(35, 80, Λ_pension, 1/24)
+
+pension(contract_pension, 50_000, 30, 0.04)
 
 #--------------------------------------------------------------------------------------------------------
