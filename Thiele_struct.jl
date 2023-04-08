@@ -1,12 +1,14 @@
 using Plots
+using QuadGK
 
 mutable struct Contract
     age::Real
     contract_length::Real
     mortality_rates::Function
-    step_size::Real
+    step_size::Real 
+    calc_method::String
     
-    function Contract(age::Real, contract_length::Real, mortality_rates::Function, step_size::Real)
+    function Contract(age::Real, contract_length::Real, mortality_rates::Function, step_size::Real, calc_method::String)
         if age < 0
             throw(ArgumentError("Age cannot be negative"))
         end
@@ -16,7 +18,10 @@ mutable struct Contract
         if step_size < 0
             throw(ArgumentError("Step size cannot be negative"))
         end
-        new(age, contract_length, mortality_rates, step_size)
+        if calc_method ∉ ["c", "d"]
+            throw(ArgumentError("Please choose calculation method: 'c' or 'd' "))
+        end
+        new(age, contract_length, mortality_rates, step_size, calc_method)
     end
 end
 
@@ -39,6 +44,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
     h = a.step_size
     T = a.contract_length
     N = floor(Int, T/h)
+    method = a.calc_method
 
     #S = {*, ⋄, †} = {0,1,2} 
     n_states = 3
@@ -63,64 +69,69 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         return ans
     end
 
-    V_act = zeros(N+1)
-    V_dis = zeros(N+1)
+    if method == "c"
+        V_act = zeros(N+1)
+        V_dis = zeros(N+1)
 
-    #CASE 1: we do not pay premiums
-    #= 
-    d/dt V_{*}(t) = r(t)V_{*}(t) - μ01(x+t)[V_{⋄}(t)-V_{*}(t)]
-                                 - μ02(x+t)[B⋅I_[0,T)(t)-V_{*}(t)]
-    
-    d/dt V_{⋄}(t) = r(t)V_{⋄}(t) - D⋅I_[0,T)(t) - μ01(x+t)[V_{*}(t)-V_{⋄}(t)] + μ12(x+t)V_{⋄}(t)
-    =#
-
-    for i in reverse(1:N)
-        tᵢ = (i+1)*h
-        V_act[i] = V_act[i+1] - h*(r*V_act[i+1] 
-                                   - μ01(x + tᵢ)*(V_dis[i+1] - V_act[i+1])
-                                   - μ02(x + tᵢ)*(B - V_act[i+1])
-                                   )
+        #CASE 1: we do not pay premiums
+        #= 
+        d/dt V_{*}(t) = r(t)V_{*}(t) - μ01(x+t)[V_{⋄}(t)-V_{*}(t)]
+                                     - μ02(x+t)[B⋅I_[0,T)(t)-V_{*}(t)]
         
-        V_dis[i] = V_dis[i+1] -h*(r*V_dis[i+1] - a_dis(tᵢ)
-                                    - μ10(x + tᵢ)*(V_act[i+1]-V_dis[i+1])
-                                    + μ12(x + tᵢ)*V_dis[i+1]
-                                    )
-        
-    end
+        d/dt V_{⋄}(t) = r(t)V_{⋄}(t) - D⋅I_[0,T)(t) - μ01(x+t)[V_{*}(t)-V_{⋄}(t)] + μ12(x+t)V_{⋄}(t)
+        =#
 
-    #Single premium
-    π0 = V_act[1]
+        for i in reverse(1:N)
+            tᵢ = (i+1)*h
+            V_act[i] = V_act[i+1] - h*(r*V_act[i+1] 
+                                       - μ01(x + tᵢ)*(V_dis[i+1] - V_act[i+1])
+                                       - μ02(x + tᵢ)*(B - V_act[i+1])
+                                       )
 
-    #CASE 2: we pay premium of 1 NOK per year:
+            V_dis[i] = V_dis[i+1] -h*(r*V_dis[i+1] - a_dis(tᵢ)
+                                      - μ10(x + tᵢ)*(V_act[i+1]-V_dis[i+1])
+                                      + μ12(x + tᵢ)*V_dis[i+1]
+                                        )
 
-    #The a.e derivative for the case where we pay 1NOK premium per year: 
-    function ae_prem1(t)
-        if t >= 0 && t < T
-            ans = -1 
-        else 
-            ans = 0
         end
-        return ans 
+
+        #Single premium
+        π0 = V_act[1]
+
+        #CASE 2: we pay premium of 1 NOK per year:
+
+        #The a.e derivative for the case where we pay 1NOK premium per year: 
+        function ae_prem1(t)
+            if t >= 0 && t < T
+                ans = -1 
+            else 
+                ans = 0
+            end
+            return ans 
+        end
+
+        V_act_p1 = zeros(N+1)
+        V_dis_p1 = zeros(N+1)
+
+        for i in reverse(1:N)
+            tᵢ = (i+1)*h
+            V_act_p1[i] = V_act_p1[i+1] -h*(r.*V_act_p1[i+1] - ae_prem1(tᵢ)
+                                              - μ01(x + tᵢ)*(V_dis_p1[i+1]-V_act_p1[i+1])
+                                              - μ02(x + tᵢ)*V_dis_p1[i+1]
+                                              )
+
+            V_dis_p1[i] = V_dis_p1[i+1] -h*(r*V_dis_p1[i+1] 
+                                              - μ10(x + tᵢ)*(V_act_p1[i+1]-V_dis_p1[i+1])
+                                              + μ12(x + tᵢ)*V_dis_p1[i+1]
+                                              )
+        end
+
+        π = -(π0/V_act_p1[1])
+
+        return (V_act, V_dis, π0, π)
+    else 
+        return(println("Must implement discrete verison"))
     end
-
-    V_act_p1 = zeros(N+1)
-    V_dis_p1 = zeros(N+1)
-
-    for i in reverse(1:N)
-        tᵢ = (i+1)*h
-        V_act_p1[i] = V_act_p1[i+1] .-h.*(r.*V_act_p1[i+1] - ae_prem1(tᵢ)
-                                          .- μ01(x + tᵢ).*(V_dis_p1[i+1].-V_act_p1[i+1])
-                                          .- μ02(x + tᵢ).*V_dis_p1[i+1]
-                                          )
-        V_dis_p1[i] = V_dis_p1[i+1] .-h.*(r*V_dis_p1[i+1] 
-                                          .- μ10(x + tᵢ).*(V_act_p1[i+1]-V_dis_p1[i+1])
-                                          .+ μ12(x + tᵢ).*V_dis_p1[i+1]
-                                          )
-    end
-
-    π = -(π0/V_act_p1[1])
-
-    return (V_act, V_dis, π0, π)
 end
 
 
@@ -141,6 +152,7 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
     h = a.step_size
     T = a.contract_length
     N = floor(Int, T/h)
+    method = a.calc_method
 
     #S = {*, †} = {0,1} 
     n_states = 2
@@ -149,25 +161,6 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
 
     #mortality rates for V_{*}^{+}(t, A)    
     μ01(t) = Λ(t)[1,2]
-
-    V_act = zeros(N+1) 
-    V_act[N+1] = E
-
-    #= 
-    d/dt V_{*}(t) = rV_{*}(t) - μ01(x+t)[B - V_{*}(t)]
-    =#
-
-    for i in reverse(1:N)
-        tᵢ = (i+1)*h
-        V_act[i] = V_act[i+1] - h*(r*V_act[i+1] 
-                                     -μ01(x + tᵢ)*(B-V_act[i+1])
-                                     )                             
-    end
-
-    #Single premium
-    π0 = V_act[1]
-
-    #CASE 2: we pay premium of 1 NOK per year:
 
     #The a.e derivative for the case where we pay 1NOK premium per year: 
     function ae_prem1(t)
@@ -179,18 +172,75 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
         return ans 
     end
 
-    V_act_p1 = zeros(N+1)
-    
-    for i in reverse(1:N)
-        tᵢ = (i+1)*h
-        V_act_p1[i] = V_act_p1[i+1] - h*(r*V_act_p1[i+1] - ae_prem1(tᵢ)
-                                     + μ01(x + tᵢ)*V_act_p1[i+1]
-                                     )
-    end
-    V_act_p1[1]
+    #Discrete setting: 
 
-    π = -(π0/V_act_p1[1])
-    return (V_act, π0, π)
+    #discount factor
+    function v(n)
+        return 1/(1+r)
+    end
+
+    #survival probability:
+    function p00(t,s)
+        if t > s || t < 0
+            throw(ArgumentError("t must be less than s, + they must be positve"))
+        end
+        integral, _ = quadgk(u -> μ01(u), t, s)
+        ans = exp(-integral)
+        return ans
+    end
+
+    p01(t,s) = 1 - p00(t,s)
+
+    if method == "c"
+        V_act = zeros(N+1) 
+        V_act[N+1] = E
+        
+        #= 
+        d/dt V_{*}(t) = rV_{*}(t) - μ01(x+t)[B - V_{*}(t)]
+        =#
+
+        for i in reverse(1:N)
+            tᵢ = (i+1)*h
+            V_act[i] = V_act[i+1] - h*(r*V_act[i+1] 
+                                         -μ01(x + tᵢ)*(B-V_act[i+1])
+                                         )                             
+        end
+
+        #Single premium
+        π0 = V_act[1]
+
+        #CASE 2: we pay premium of 1 NOK per year:
+        V_act_p1 = zeros(N+1)
+        
+        for i in reverse(1:N)
+            tᵢ = (i+1)*h
+            V_act_p1[i] = V_act_p1[i+1] - h*(r*V_act_p1[i+1] - ae_prem1(tᵢ)
+                                         + μ01(x + tᵢ)*V_act_p1[i+1]
+                                         )
+        end
+        V_act_p1[1]
+
+        π = -(π0/V_act_p1[1])
+        return (V_act, π0, π)
+
+    else 
+        V_act = zeros(T+1)
+        V_act[T+1] = E
+        V_act_p1 = zeros(T+1)
+
+        for n ∈ reverse(0:(T-1))
+            V_act[n+1] = v(n)*(p00(x + n, x + n+1)*V_act[n+2]
+                               +p01(x + n, x + n+1)*B
+                              ) 
+
+            V_act_p1[n+1] = ae_prem1(n) + v(n)*(p00(x +n, x +n+1)*V_act_p1[n+2] + p01(x+n, x+n+1))
+        end 
+
+        π0 = V_act[1]
+        π = -(π0/V_act_p1[1])
+
+        return (V_act, π0, π)
+    end
 end
 
 function pension(a::Contract, P, T0, r)
@@ -210,59 +260,64 @@ function pension(a::Contract, P, T0, r)
     h = a.step_size
     T = a.contract_length
     N = floor(Int, T/h)
+    method = a.calc_method
 
-     #S = {*, †} = {0,1} 
-     n_states = 2
-     Λ = a.mortality_rates
-     size(Λ(0)) == (n_states,n_states) || error("Λ must be $n_states x $n_states")
+    #S = {*, †} = {0,1} 
+    n_states = 2
+    Λ = a.mortality_rates
+    size(Λ(0)) == (n_states,n_states) || error("Λ must be $n_states x $n_states")
 
     #mortality rates for V_{*}^{+}(t, A)    
     μ01(t) = Λ(t)[1,2]
 
-    V_act = zeros(N+1) 
+    if method == "c"
+        V_act = zeros(N+1) 
 
-    #= 
-    d/dt V_{*}(t) = [r + μ01(x+t)]V_{*}(t) - P⋅I_[T0,T)(t)
-    =#
+        #= 
+        d/dt V_{*}(t) = [r + μ01(x+t)]V_{*}(t) - P⋅I_[T0,T)(t)
+        =#
 
-    #a.e derivative of a_{*}(t), with no premiums: 
-    function ae_pension(t)
-        if t >= T0 && t < T
-            ans = P 
-        else 
-            ans = 0 
+        #a.e derivative of a_{*}(t), with no premiums: 
+        function ae_pension(t)
+            if t >= T0 && t < T
+                ans = P 
+            else 
+                ans = 0 
+            end
+            return ans
         end
-        return ans
-    end
 
-    for i in reverse(1:N)
-        tᵢ = (i+1)*h
-        V_act[i] = V_act[i+1] - h*((r+μ01(x + tᵢ))*V_act[i+1] - ae_pension(tᵢ))                           
-    end
-
-    π0 = V_act[1]
-
-     #The a.e derivative for the case where we pay 1NOK premium per year: 
-     function ae_prem1(t)
-        if t >= 0 && t < T
-            ans = -1 
-        else 
-            ans = 0
+        for i in reverse(1:N)
+            tᵢ = (i+1)*h
+            V_act[i] = V_act[i+1] - h*((r+μ01(x + tᵢ))*V_act[i+1] - ae_pension(tᵢ))                           
         end
-        return ans 
-    end
 
-    V_act_p1 = zeros(N+1)
+        π0 = V_act[1]
+
+        #The a.e derivative for the case where we pay 1NOK premium per year: 
+        function ae_prem1(t)
+            if t >= 0 && t < T
+                ans = -1 
+            else 
+                ans = 0
+            end
+            return ans 
+        end
+
+        V_act_p1 = zeros(N+1)
     
-    for i in reverse(1:N)
-        tᵢ = (i+1)*h
-        V_act_p1[i] = V_act_p1[i+1] - h*((r + μ01(x + tᵢ))*V_act_p1[i+1] - ae_prem1(tᵢ))
+        for i in reverse(1:N)
+            tᵢ = (i+1)*h
+            V_act_p1[i] = V_act_p1[i+1] - h*((r + μ01(x + tᵢ))*V_act_p1[i+1] - ae_prem1(tᵢ))
+        end
+
+        #yearly premium
+        π = -(π0/V_act_p1[1])
+
+        return (V_act, π0, π)
+    else
+        return(println("Must implement Discrete case"))
     end
-
-    #yearly premium
-    π = -(π0/V_act_p1[1])
-
-    return (V_act, π0, π)
 end
 
 #EXAMPLES
@@ -287,7 +342,7 @@ function Λ_dis(t)
     return L
 end
 
-contract_dis = Contract(60, 10, Λ_dis, 1/12)
+contract_dis = Contract(60, 10, Λ_dis, 1/12, "c")
 
 disability_benefit(contract_dis, 25_000, 60_000, 0.04)
 
@@ -302,15 +357,14 @@ function Λ_endownment(t)
     return L
 end
 
-contract_endownment = Contract(35, 60, Λ_endownment, 1/12)
+contract_endownment = Contract(35, 60, Λ_endownment, 1/12, "d")
 
-endownment(contract_endownment,125_000, 250_000, 0.035)
+endownment(contract_endownment,125_000, 250_000, 0.03)[end]
 
 #Pension
 Λ_pension(t) = Λ_endownment(t)
 
-contract_pension = Contract(35, 80, Λ_pension, 1/24)
+contract_pension = Contract(35, 80, Λ_pension, 1/24, "d")
 
 pension(contract_pension, 50_000, 30, 0.04)
-
 #--------------------------------------------------------------------------------------------------------
