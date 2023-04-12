@@ -28,10 +28,14 @@ end
 function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
     "
     Implements solution of:
+    Continuous case:
     d/dt V_{*}(t) = r(t)V_{*}(t) - μ01(x+t)[V_{⋄}(t)-V_{*}(t)]
                                      - μ02(x+t)[B⋅I_[0,T)(t)-V_{*}(t)]
         
     d/dt V_{⋄}(t) = r(t)V_{⋄}(t) - D⋅I_[0,T)(t) - μ01(x+t)[V_{*}(t)-V_{⋄}(t)] + μ12(x+t)V_{⋄}(t)
+
+    Discrete case: 
+    TO BE IMPLEMENTED
 
     Args:
         a (Contract): Inherits from Contract 
@@ -42,7 +46,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         Array: (V_{*}(t), V_{⋄}(t), π0, π)
         V_{*}(t): Reserve for healty state 
         V_{⋄}(t): Reserve for disabled state 
-        π0: One time premium 
+        π0: Single premium 
         π: yearly_premium
     "
     if D < 0 
@@ -138,7 +142,11 @@ end
 function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
     " 
     Implements solution of:
+    Continuous case:
     d/dt V_{*}(t) = rV_{*}(t) - μ01(x+t)[B - V_{*}(t)]
+    
+    Discrete case: 
+    V_{*}(n) = i_{n}(p_{**}(x+n, x+n+1)V_{*}(n+1) + p_{*†}(x+n, x+n+1), i_{n} = 1/(1+r)
 
     Args:
         a (Contract): Inherits from Contract 
@@ -185,9 +193,7 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
     #Discrete setting: 
 
     #discount factor
-    function v(n)
-        return 1/(1+r)
-    end
+    i_n = 1/(1+r)
 
     #survival probability:
     function p00(t,s)
@@ -229,11 +235,11 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
         V_act_p1 = zeros(T+1)
 
         for n ∈ reverse(0:(T-1))
-            V_act[n+1] = v(n)*(p00(x + n, x + n+1)*V_act[n+2]
+            V_act[n+1] = i_n*(p00(x + n, x + n+1)*V_act[n+2]
                                +p01(x + n, x + n+1)*B
                               ) 
 
-            V_act_p1[n+1] = ae_prem1(n) + v(n)*(p00(x +n, x +n+1)*V_act_p1[n+2] + p01(x+n, x+n+1))
+            V_act_p1[n+1] = ae_prem1(n) + i_n*(p00(x +n, x +n+1)*V_act_p1[n+2] + p01(x+n, x+n+1))
         end 
 
         π0 = V_act[1]
@@ -246,7 +252,11 @@ end
 function pension(a::Contract, P, T0, r)
     "
     Implements solution of: 
+    Continuous case:
     d/dt V_{*}(t) = [r + μ01(x+t)]V_{*}(t) - P⋅I_[T0,T)(t)
+
+    Discrete case: 
+    V_{*}(n) = P⋅I_[T0,T)(n) + i_{n}p_{**}(x+n, x+n+1)V_{*}(n+1), i_{n} = 1/(1+r)
 
     Args:
         a (Contract): Inherits from Contract 
@@ -256,7 +266,7 @@ function pension(a::Contract, P, T0, r)
     Returns: 
         Array: (V_{*}(t), π0, π)
         V_{*}(t): Reserve for healty state 
-        π0: One time premium 
+        π0: Single premium 
         π: yearly_premium
     "
     if P < 0 
@@ -280,6 +290,18 @@ function pension(a::Contract, P, T0, r)
     #mortality rates for V_{*}^{+}(t, A)    
     μ01(t) = Λ(t)[1,2]
 
+    #survival probability:
+    function p00(t,s)
+        if t > s || t < 0
+            throw(ArgumentError("t must be less than s, + they must be positve"))
+        end
+        integral, _ = quadgk(u -> μ01(u), t, s)
+        ans = exp(-integral)
+        return ans
+    end
+
+    p01(t,s) = 1 - p00(t,s)
+
     #a.e derivative of a_{*}(t), with no premiums: 
     function ae_pension(t)
         if t >= T0 && t < T
@@ -300,6 +322,8 @@ function pension(a::Contract, P, T0, r)
         return ans 
     end
 
+    i_n = 1/(1+r)
+
     if method == "c"
         V_act = zeros(N+1) 
         #premium = 1NOK per year:
@@ -319,7 +343,19 @@ function pension(a::Contract, P, T0, r)
 
         return (V_act, π0, π)
     else
-        return(println("Must implement Discrete case"))
+        V_act = zeros(T+1)
+        V_act_p1 = zeros(T+1)
+
+        for n ∈ reverse(0:(T-1))
+            V_act[n+1] = ae_pension(n) + i_n*(p00(x+n, x+n+1)*V_act[n+2])
+            #premiums:
+            V_act_p1[n+1] = ae_prem1(n) + i_n*(p00(x+n, x+n+1)*V_act_p1[n+2])
+        end 
+
+        π0 = V_act[1]
+        π = -(π0/V_act_p1[1])
+
+        return (V_act, π0, π)
     end
 end
 
@@ -367,7 +403,7 @@ endownment(contract_endownment,125_000, 250_000, 0.03)
 #Pension
 Λ_pension(t) = Λ_endownment(t)
 
-contract_pension = Contract(35, 80, Λ_pension, 1/24, "c")
+contract_pension = Contract(35, 80, Λ_pension, 1/(12), "c")
 
 pension(contract_pension, 50_000, 30, 0.04)
 #--------------------------------------------------------------------------------------------------------
