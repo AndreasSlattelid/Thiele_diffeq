@@ -25,6 +25,16 @@ mutable struct Contract
     end
 end
 
+#The a.e derivative for the case where we pay 1NOK premium per year: 
+function ae_prem1(t,T)
+    if t >= 0 && t < T
+        ans = -1 
+    else 
+        ans = 0
+    end
+    return ans 
+end
+
 function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
     "
     Implements solution of:
@@ -85,16 +95,6 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         return ans
     end
 
-    #The a.e derivative for the case where we pay 1NOK premium per year: 
-    function ae_prem1(t)
-        if t >= 0 && t < T
-            ans = -1 
-        else 
-            ans = 0
-        end
-        return ans 
-    end
-
     if method == "c"
         V_act = zeros(N+1)
         V_dis = zeros(N+1)
@@ -115,7 +115,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
                                       + μ12(x + tᵢ)*V_dis[i+1]
                                         )
             
-            V_act_p1[i] = V_act_p1[i+1] -h*(r.*V_act_p1[i+1] - ae_prem1(tᵢ)
+            V_act_p1[i] = V_act_p1[i+1] -h*(r.*V_act_p1[i+1] - ae_prem1(tᵢ,T)
                                             - μ01(x + tᵢ)*(V_dis_p1[i+1]-V_act_p1[i+1])
                                             - μ02(x + tᵢ)*V_dis_p1[i+1]
                                             )
@@ -179,20 +179,8 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
 
     #mortality rates for V_{*}^{+}(t, A)    
     μ01(t) = Λ(t)[1,2]
-
-    #The a.e derivative for the case where we pay 1NOK premium per year: 
-    function ae_prem1(t)
-        if t >= 0 && t < T
-            ans = -1 
-        else 
-            ans = 0
-        end
-        return ans 
-    end
-
-    #Discrete setting: 
-
-    #discount factor
+ 
+    #discount factor discrete
     i_n = 1/(1+r)
 
     #survival probability:
@@ -218,7 +206,7 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
             V_act[i] = V_act[i+1] - h*(r*V_act[i+1] 
                                          -μ01(x + tᵢ)*(B-V_act[i+1])
                                          ) 
-            V_act_p1[i] = V_act_p1[i+1] - h*(r*V_act_p1[i+1] - ae_prem1(tᵢ)
+            V_act_p1[i] = V_act_p1[i+1] - h*(r*V_act_p1[i+1] - ae_prem1(tᵢ,T)
                                              + μ01(x + tᵢ)*V_act_p1[i+1]
                                             )                            
         end
@@ -239,7 +227,7 @@ function endownment(a::Contract, E::Int64, B::Int64,r::Float64)
                                +p01(x + n, x + n+1)*B
                               ) 
 
-            V_act_p1[n+1] = ae_prem1(n) + i_n*(p00(x +n, x +n+1)*V_act_p1[n+2] + p01(x+n, x+n+1))
+            V_act_p1[n+1] = ae_prem1(n,T) + i_n*(p00(x +n, x +n+1)*V_act_p1[n+2] + p01(x+n, x+n+1))
         end 
 
         π0 = V_act[1]
@@ -312,16 +300,6 @@ function pension(a::Contract, P, T0, r)
         return ans
     end
 
-    #The a.e derivative for the case where we pay 1NOK premium per year: 
-    function ae_prem1(t)
-        if t >= 0 && t < T
-            ans = -1 
-        else 
-            ans = 0
-        end
-        return ans 
-    end
-
     i_n = 1/(1+r)
 
     if method == "c"
@@ -332,7 +310,7 @@ function pension(a::Contract, P, T0, r)
         for i in reverse(1:N)
             tᵢ = (i+1)*h
             V_act[i] = V_act[i+1] - h*((r+μ01(x + tᵢ))*V_act[i+1] - ae_pension(tᵢ))
-            V_act_p1[i] = V_act_p1[i+1] - h*((r + μ01(x + tᵢ))*V_act_p1[i+1] - ae_prem1(tᵢ))                           
+            V_act_p1[i] = V_act_p1[i+1] - h*((r + μ01(x + tᵢ))*V_act_p1[i+1] - ae_prem1(tᵢ,T))                           
         end
 
         #Single premium
@@ -349,7 +327,7 @@ function pension(a::Contract, P, T0, r)
         for n ∈ reverse(0:(T-1))
             V_act[n+1] = ae_pension(n) + i_n*(p00(x+n, x+n+1)*V_act[n+2])
             #premiums:
-            V_act_p1[n+1] = ae_prem1(n) + i_n*(p00(x+n, x+n+1)*V_act_p1[n+2])
+            V_act_p1[n+1] = ae_prem1(n,T) + i_n*(p00(x+n, x+n+1)*V_act_p1[n+2])
         end 
 
         π0 = V_act[1]
@@ -403,7 +381,7 @@ endownment(contract_endownment,125_000, 250_000, 0.03)
 #Pension
 Λ_pension(t) = Λ_endownment(t)
 
-contract_pension = Contract(35, 80, Λ_pension, 1/(12), "c")
+contract_pension = Contract(35, 80, Λ_pension, 1/(12), "d")
 
 pension(contract_pension, 50_000, 30, 0.04)
 #--------------------------------------------------------------------------------------------------------
