@@ -42,10 +42,12 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
     d/dt V_{*}(t) = r(t)V_{*}(t) - μ01(x+t)[V_{⋄}(t)-V_{*}(t)]
                                      - μ02(x+t)[B⋅I_[0,T)(t)-V_{*}(t)]
         
-    d/dt V_{⋄}(t) = r(t)V_{⋄}(t) - D⋅I_[0,T)(t) - μ01(x+t)[V_{*}(t)-V_{⋄}(t)] + μ12(x+t)V_{⋄}(t)
+    d/dt V_{⋄}(t) = r(t)V_{⋄}(t) - D⋅I_[0,T)(t) - μ10(x+t)[V_{*}(t)-V_{⋄}(t)] + μ12(x+t)V_{⋄}(t)
 
     Discrete case: 
-    TO BE IMPLEMENTED
+    V_{*}(n) = i_{n}[p_{**}(x+n, x+n+1)V_{*}(n+1) + p_{*⋄}(x+n, x+n+1)V_{⋄}(n+1)]
+
+    V_{⋄}(n) = D⋅I_[0,T)(n) + i_{n}[p_{⋄⋄}(x+n, x+n+1)V_{⋄}(n+1) + p_{⋄*}(x+n, x+n+1)V_{*}(n+1)]
 
     Args:
         a (Contract): Inherits from Contract 
@@ -53,7 +55,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         B (Int64): The Death Benefit 
         r (Float64): the constant annual interest rate: 
     Returns: 
-        Array: (V_{*}(t), V_{⋄}(t), π0, π)
+        Array{Float64}: (V_{*}(t), V_{⋄}(t), π0, π)
         V_{*}(t): Reserve for healty state 
         V_{⋄}(t): Reserve for disabled state 
         π0: Single premium 
@@ -134,7 +136,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
 
         return (V_act, V_dis, π0, π)
     else 
-        return(println("Must implement discrete verison"))
+        return(println("TO BE IMPLEMENTED"))
     end
 end
 
