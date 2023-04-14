@@ -263,7 +263,7 @@ function pension(a::Contract, P, T0, r)
         throw(ArgumentError("P must be positive"))
     end
     if T0 < 0 
-        throw("T0 must be positive")
+        throw(ArgumentError("T0 must be positive"))
     end
 
     x = a.age
