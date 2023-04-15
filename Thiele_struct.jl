@@ -1,6 +1,9 @@
 using Plots
 using QuadGK
 
+#for numerical simulation of transition rate probabilites, will package this up later:
+include("ODEsolver.jl")
+
 mutable struct Contract
     age::Real
     contract_length::Real
@@ -97,6 +100,28 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         return ans
     end
 
+    #prbabilites for discrete case:
+    #p_{**}(t,s):
+    function p00(t,s)
+        if t > s || t < 0
+            throw(ArgumentError("t must be less than s, + they must be positve"))
+        end
+        integral, _ = quadgk(u -> μ01(u) + μ02(u), t, s)
+        ans = exp(-integral)
+        return ans
+    end
+
+    #p_{⋄⋄}(t,s)
+    function p11(t,s)
+        if t > s || t < 0
+            throw(ArgumentError("t must be less than s, + they must be positve"))
+        end
+        integral, _ = quadgk(u -> μ10(u) + μ12(u), t, s)
+        ans = exp(-integral)
+        return ans
+    end
+
+
     if method == "c"
         V_act = zeros(N+1)
         V_dis = zeros(N+1)
@@ -136,7 +161,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
 
         return (V_act, V_dis, π0, π)
     else 
-        return(println("TO BE IMPLEMENTED"))
+        return(p11(20, 30))
     end
 end
 
@@ -361,7 +386,7 @@ function Λ_dis(t)
     return L
 end
 
-contract_dis = Contract(60, 10, Λ_dis, 1/12, "c")
+contract_dis = Contract(60, 10, Λ_dis, 1/12, "d")
 
 disability_benefit(contract_dis, 25_000, 60_000, 0.04)
 
@@ -387,3 +412,4 @@ contract_pension = Contract(35, 80, Λ_pension, 1/(12), "d")
 
 pension(contract_pension, 50_000, 30, 0.04)
 #--------------------------------------------------------------------------------------------------------
+
