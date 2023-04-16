@@ -100,6 +100,9 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         return ans
     end
 
+    #discount factor discrete
+    i_n = 1/(1+r)
+
     #prbabilites for discrete case:
     #p_{**}(t,s):
     function p00(t,s)
@@ -110,7 +113,21 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         ans = exp(-integral)
         return ans
     end
+    
+    #p_{*⋄}(t,s)
+    #Must tend to numerical solution as analytical may not hold:
+    start_ages = map(n -> x + n, 0:(T-1))   #all initial ages in for-loop
+    end_ages   = map(n -> x + n+1, 0:(T-1)) #all end ages in for-loop
 
+    p01 = zeros(T-1) #vector of * -> ⋄
+    p10 = zeros(T-1) #vector of ⋄ -> *
+
+    for i in 1:(T-1)
+        tmp = RK4(ODE_initial(start_ages[i], end_ages[i], h, Λ))[:,:,end]
+        p01[i] = tmp[1,2]
+        p10[i] = tmp[2,1]
+    end
+    
     #p_{⋄⋄}(t,s)
     function p11(t,s)
         if t > s || t < 0
@@ -161,7 +178,25 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
 
         return (V_act, V_dis, π0, π)
     else 
-        return(p11(20, 30))
+        V_act = zeros(N+1)
+        V_dis = zeros(N+1)
+
+        #premium of 1NOK per year:
+        V_act_p1 = zeros(N+1)
+        V_dis_p1 = zeros(N+1)
+
+        #NEED SOME CAREFULE INDEXING:
+        #=
+        for n ∈ reverse(0:(T-1))
+            V_act[n+1] = i_n*(p00(x+n, x +n+1)*V_act[n+2]
+                             + p01[n]*V_dis[n+2])
+
+            V_dis[n+1] = a_dis(n) + i_n*(p11(x+n, x+n+1)*V_dis[n+2]
+                                         + p10[n]*V_act[n+2])    
+        end 
+        =#
+
+        return(V_dis)
     end
 end
 
@@ -413,3 +448,26 @@ contract_pension = Contract(35, 80, Λ_pension, 1/(12), "d")
 pension(contract_pension, 50_000, 30, 0.04)
 #--------------------------------------------------------------------------------------------------------
 
+#some experimental code:
+test = ODE_initial(20, 25, 1/12, Λ_dis)
+T = 25
+x0 = 30
+
+RK4(test)[:,:,end][2,1]
+
+start_ages = map(n -> x0 +n, 0:(T-1))
+end_ages = map(n -> x0 + n+1, 0:(T-1))
+
+p01 = zeros(T-1)
+p10 = zeros(T-1)
+for i in 1:(T-1)
+    tmp = RK4(ODE_initial(start_ages[i], end_ages[i], 1/12, Λ_dis))
+    p01[i] = tmp[:, :, end][1,2]
+    p10[i] = tmp[:, :, end][2,1]
+end
+
+
+#p01 = 
+
+
+ODE_initial(start_ages[1], end_ages[1], 1/12, Λ_dis)

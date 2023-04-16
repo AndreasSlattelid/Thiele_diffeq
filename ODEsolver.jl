@@ -64,7 +64,7 @@ function Euler(p::ODE_initial)
     "
     P(s, t+h) = P(s,t) + hP(s,t)Λ(t)
     Returns: 
-        P: (Array{Float64}), contains P(x_start, x_start), \dots P(x_start, x_end)
+        P: (Array{Float64}), contains P(x_start, x_start), ... P(x_start, x_end)
     "
     x_start = p.x_start
     x_end = p.x_end
@@ -88,7 +88,7 @@ function Taylor(p::ODE_initial)
     P(s, t+h) = P(s,t)*[I+hΛ(t) + (h^{2}/2)⋅Λ'(t) + (h^{2}/2)Λ(t)^(2)] + O(h^{3})
     Λ'(t) ≈ [Λ(t+h)-Λ(t)]/h
     Returns: 
-        P: (Array{Float64}), contains P(x_start, x_start), \dots P(x_start, x_end)
+        P: (Array{Float64}), contains P(x_start, x_start), ... P(x_start, x_end)
     "
     x_start = p.x_start
     x_end = p.x_end
@@ -143,6 +143,7 @@ function RK4(p::ODE_initial)
     return P
 end
 
+#= 
 #Disability:
 function Λ_dis(t)
     #state0:
@@ -166,5 +167,5 @@ end
 test = ODE_initial(25, 30, 1/12, Λ_dis)
 
 Taylor(test)
-
+=#
 
