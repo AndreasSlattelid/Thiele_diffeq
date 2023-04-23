@@ -119,8 +119,9 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
     start_ages = map(n -> x + n, 0:(T-1))   #all initial ages in for-loop
     end_ages   = map(n -> x + n+1, 0:(T-1)) #all end ages in for-loop
 
-    p01 = zeros(T-1) #vector of * -> ⋄
-    p10 = zeros(T-1) #vector of ⋄ -> *
+    #length T, so that discrete loop can take "index-0" as arg:
+    p01 = zeros(T) #vector of * -> ⋄
+    p10 = zeros(T) #vector of ⋄ -> *
 
     for i in 1:(T-1)
         tmp = RK4(ODE_initial(start_ages[i], end_ages[i], h, Λ))[:,:,end]
@@ -185,18 +186,16 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
         V_act_p1 = zeros(N+1)
         V_dis_p1 = zeros(N+1)
 
-        #NEED SOME CAREFULE INDEXING:
-        #=
         for n ∈ reverse(0:(T-1))
             V_act[n+1] = i_n*(p00(x+n, x +n+1)*V_act[n+2]
-                             + p01[n]*V_dis[n+2])
+                             + p01[n+1]*V_dis[n+2])
 
             V_dis[n+1] = a_dis(n) + i_n*(p11(x+n, x+n+1)*V_dis[n+2]
-                                         + p10[n]*V_act[n+2])    
+                                         + p10[n+1]*V_act[n+2])    
         end 
-        =#
+        
 
-        return(V_dis)
+        return(println("TO BE IMPLEMENTED"))
     end
 end
 

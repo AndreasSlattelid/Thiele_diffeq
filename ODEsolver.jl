@@ -16,6 +16,9 @@ mutable struct ODE_initial
     if h < 0 
         throw(ArgumentError("the stepsize h must be positive"))
     end
+    if  sum(sum(Λ(0), dims = 2) .< 10^(-10)) != size(Λ(0))[1]
+        throw(ArgumentError("Make sure that the rowsum of Λ sums to zero"))
+    end
     new(x_start, x_end, h, Λ)
     end
 end
@@ -143,7 +146,7 @@ function RK4(p::ODE_initial)
     return P
 end
 
-#= 
+
 #Disability:
 function Λ_dis(t)
     #state0:
@@ -164,8 +167,5 @@ function Λ_dis(t)
     return L
 end
 
-test = ODE_initial(25, 30, 1/12, Λ_dis)
 
-Taylor(test)
-=#
 
