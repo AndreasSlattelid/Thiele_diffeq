@@ -16,6 +16,9 @@ mutable struct ODE_initial
     if h < 0 
         throw(ArgumentError("the stepsize h must be positive"))
     end
+    if size(Λ(0))[1] != size(Λ(0))[2]
+        throw(ArgumentError("Make sure Λ is quadratic"))
+    end
     if  sum(sum(Λ(0), dims = 2) .< 10^(-10)) != size(Λ(0))[1]
         throw(ArgumentError("Make sure that the rowsum of Λ sums to zero"))
     end
@@ -147,6 +150,7 @@ function RK4(p::ODE_initial)
 end
 
 
+#=
 #Disability:
 function Λ_dis(t)
     #state0:
@@ -166,6 +170,5 @@ function Λ_dis(t)
 
     return L
 end
-
-
+=#
 
