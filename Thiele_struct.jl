@@ -1,3 +1,4 @@
+using Revise
 using Plots
 using QuadGK
 
@@ -160,7 +161,7 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
                                       + μ12(x + tᵢ)*V_dis[i+1]
                                         )
             
-            V_act_p1[i] = V_act_p1[i+1] -h*(r.*V_act_p1[i+1] - ae_prem1(tᵢ,T)
+            V_act_p1[i] = V_act_p1[i+1] -h*(r*V_act_p1[i+1] - ae_prem1(tᵢ,T)
                                             - μ01(x + tᵢ)*(V_dis_p1[i+1]-V_act_p1[i+1])
                                             - μ02(x + tᵢ)*V_dis_p1[i+1]
                                             )
@@ -191,11 +192,17 @@ function disability_benefit(a::Contract, D::Int64, B::Int64,r::Float64)
                              + p01[n+1]*V_dis[n+2])
 
             V_dis[n+1] = a_dis(n) + i_n*(p11(x+n, x+n+1)*V_dis[n+2]
-                                         + p10[n+1]*V_act[n+2])    
+                                         + p10[n+1]*V_act[n+2])
+            
+            #SOMETHING NOT CORRECT WHEN PREMIUM = 1NOK
+            V_act_p1[n+1] = ae_prem1(n, T) + i_n*(p00(x+n, x +n+1)*V_act_p1[n+2]+ p01[n+1]*V_dis_p1[n+2])
+            V_dis_p1[n+1] = i_n*(p11(x+n, x+n+1)*V_dis_p1[n+2] + p10[n+1]*V_act_p1[n+2])
         end 
         
+        π0 = V_act[1]
+        π = -(π0/V_act_p1[1])
 
-        return(println("TO BE IMPLEMENTED"))
+        return (V_act, V_dis, π0, π)
     end
 end
 
@@ -422,7 +429,7 @@ end
 
 contract_dis = Contract(60, 10, Λ_dis, 1/12, "d")
 
-disability_benefit(contract_dis, 25_000, 60_000, 0.04)
+disability_benefit(contract_dis, 25_000, 60_000, 0.04)[end]
 
 #Endownment:
 function Λ_endownment(t)

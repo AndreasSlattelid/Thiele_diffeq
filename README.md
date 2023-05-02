@@ -1,1 +1,1 @@
-Learning about structs, GOAL is to try to mimic Python's classes, and pacakage up some of the most common Thiele's differential equations. 
+Better documentation will come. Plan is to include a document describing cash-flows associated and mathematics behind the algorithms
